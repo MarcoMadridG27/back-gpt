@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 # === Configuración ===
@@ -13,7 +14,14 @@ model = "gpt-4"
 
 # === API ===
 app = FastAPI(title="TutorAI IA Microservice")
-
+# Configuración de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Puedes restringir a ["https://tudominio.com"]
+    allow_credentials=True,
+    allow_methods=["*"],  # Permitir GET, POST, PUT, DELETE, OPTIONS...
+    allow_headers=["*"],  # Permitir cualquier header
+)
 # === Schemas ===
 class ChatMessage(BaseModel):
     role: str
