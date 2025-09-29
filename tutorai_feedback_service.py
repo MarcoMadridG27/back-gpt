@@ -1,8 +1,9 @@
 import os
 import json
-from typing import List
+import re
+from typing import List, Optional, Literal
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,69 +72,197 @@ class QuizRequest(BaseModel):
 class CompareRequest(BaseModel):
     old_text: str
     new_text: str
+class Position(BaseModel):
+    start: int = 0
+    end: int = 0
+
+class ErrorItem(BaseModel):
+    text: str
+    suggestion: Optional[str] = ""
+    type: str  # e.g., spelling, grammar, style, punctuation
+    severity: Literal["high", "medium", "low"] = "medium"
+    position: Position = Position()
+    explanation: str
+
+class SuggestionItem(BaseModel):
+    text: str
+    suggestion: Optional[str] = ""
+    type: str  # e.g., Style, Grammar, Vocabulary
+
+class Statistics(BaseModel):
+    wordCount: int = 0
+    sentenceCount: int = 0
+    paragraphCount: int = 0
+    readabilityLevel: str = "Secundaria"
+
+class Competencies(BaseModel):
+    grammar: int = Field(0, ge=0, le=100)
+    vocabulary: int = Field(0, ge=0, le=100)
+    coherence: int = Field(0, ge=0, le=100)
+    creativity: int = Field(0, ge=0, le=100)
+
+class Annotation(BaseModel):
+    start: int
+    end: int
+    type: Literal["highlight"] = "highlight"
+    message: str
+
+class FeedbackOut(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    errors: List[ErrorItem] = []
+    suggestions: List[SuggestionItem] = []
+    statistics: Statistics = Statistics()
+    competencies: Competencies = Competencies()
+    annotations: List[Annotation] = []
+
+def _extract_json_block(text: str) -> str:
+    """Intenta extraer el bloque JSON más grande desde la primera '{' hasta la última '}'."""
+    if not text:
+        raise ValueError("Respuesta vacía del modelo")
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("No se encontró JSON en la respuesta")
+    return text[start:end+1]
+
+def _basic_stats_from_text(s: str) -> Statistics:
+    words = [w for w in re.split(r"\s+", s.strip()) if w]
+    sentences = re.split(r"[.!?¡¿]+", s.strip())
+    sentences = [t for t in sentences if t.strip()]
+    paragraphs = [p for p in s.split("\n") if p.strip()]
+    return Statistics(
+        wordCount=len(words),
+        sentenceCount=len(sentences),
+        paragraphCount=len(paragraphs),
+        readabilityLevel="Secundaria"
+    )
+
+def _fill_defaults(parsed: dict, student_text: str) -> dict:
+    # statistics
+    if "statistics" not in parsed or not isinstance(parsed.get("statistics"), dict):
+        parsed["statistics"] = _basic_stats_from_text(student_text).model_dump()
+
+    # competencies
+    if "competencies" not in parsed or not isinstance(parsed.get("competencies"), dict):
+        # Heurística simple basada en score si existe
+        score = int(parsed.get("score", 0)) if str(parsed.get("score", "0")).isdigit() else 0
+        base = max(0, min(100, score))
+        parsed["competencies"] = {
+            "grammar": base,
+            "vocabulary": max(0, min(100, base)),
+            "coherence": max(0, min(100, base)),
+            "creativity": max(0, min(100, base))
+        }
+
+    # arrays
+    for key in ["errors", "suggestions", "annotations"]:
+        if key not in parsed or not isinstance(parsed.get(key), list):
+            parsed[key] = []
+
+    return parsed
 
 @app.post("/feedback")
 def generate_feedback(req: TextRequest):
+    SYSTEM_PROMPT = (
+        "Eres un tutor de comunicación para secundaria. "
+        "Analiza el texto del estudiante y responde ÚNICAMENTE con JSON VÁLIDO, sin comentarios ni texto adicional. "
+        "Debes usar exactamente este esquema (las claves y tipos deben coincidir):\n"
+        "{\n"
+        '  "score": 0,\n'
+        '  "errors": [\n'
+        "    {\n"
+        '      "text": "",\n'
+        '      "suggestion": "",\n'
+        '      "type": "spelling",\n'
+        '      "severity": "medium",\n'
+        '      "position": { "start": 0, "end": 0 },\n'
+        '      "explanation": ""\n'
+        "    }\n"
+        "  ],\n"
+        '  "suggestions": [\n'
+        "    {\n"
+        '      "text": "",\n'
+        '      "suggestion": "",\n'
+        '      "type": "Style"\n'
+        "    }\n"
+        "  ],\n"
+        '  "statistics": {\n'
+        '    "wordCount": 0,\n'
+        '    "sentenceCount": 0,\n'
+        '    "paragraphCount": 0,\n'
+        '    "readabilityLevel": "Secundaria"\n'
+        "  },\n"
+        '  "competencies": {\n'
+        '    "grammar": 0,\n'
+        '    "vocabulary": 0,\n'
+        '    "coherence": 0,\n'
+        '    "creativity": 0\n'
+        "  },\n"
+        '  "annotations": [\n'
+        "    {\n"
+        '      "start": 0,\n'
+        '      "end": 0,\n'
+        '      "type": "highlight",\n'
+        '      "message": ""\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "Restricciones:\n"
+        "- Usa enteros 0–100 para 'score' y para cada competencia.\n"
+        "- 'type' y 'severity' deben ser cadenas válidas, con 'severity' ∈ {high, medium, low}.\n"
+        "- 'annotations.type' SIEMPRE debe ser 'highlight'.\n"
+        "- Si no tienes posición exacta, deja start y end en 0.\n"
+        "- NO incluyas comentarios, notas, ni texto fuera del JSON."
+    )
+
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": (
-                    "Eres un tutor de comunicación para secundaria. "
-                    "Analiza el texto del estudiante y responde únicamente con JSON válido. "
-                    "El JSON debe tener esta estructura exacta:\n\n"
-                    "{\n"
-                    '  "score": {\n'
-                    '    "global": int,\n'
-                    '    "categories": {\n'
-                    '      "conectores": int,\n'
-                    '      "gramática": int,\n'
-                    '      "estructura": int,\n'
-                    '      "vocabulario": int,\n'
-                    '      "estilo": int\n'
-                    "    }\n"
-                    "  },\n"
-                    '  "errors": [ { "type": str, "message": str } ],\n'
-                    '  "suggestions": [ { "type": str, "message": str } ],\n'
-                    '  "annotations": [ { "range": { "start": int, "end": int }, "severity": str, "message": str } ],\n'
-                    '  "connectors": [ { "word": str, "type": str, "start": int, "end": int, "color": str } ],\n'
-                    '  "highlighted_text": str\n'
-                    "}\n\n"
-                    "No devuelvas explicaciones, solo el JSON."
-                )},
-                {"role": "user", "content": f"Texto del estudiante:\n{req.student_text}"}
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Texto del estudiante:\n{req.student_text}\n\nIdioma: {req.language} | Tipo: {req.text_type}"}
             ],
-            max_completion_tokens=1600
+            # Usa 'max_tokens' para Chat Completions
+            max_tokens=1200,
+            temperature=0.2,
         )
 
-        raw_output = response.choices[0].message.content or ""
-        return json.loads(raw_output)
+        raw_output = (response.choices[0].message.content or "").strip()
 
-    except json.JSONDecodeError:
-        # Fallback si el modelo no devuelve JSON válido
-        return {
-            "error": "El modelo no devolvió JSON válido",
-            "raw_output": raw_output,
-            "expected_format": {
-                "score": {
-                    "global": 0,
-                    "categories": {
-                        "conectores": 0,
-                        "gramática": 0,
-                        "estructura": 0,
-                        "vocabulario": 0,
-                        "estilo": 0
-                    }
-                },
-                "errors": [],
-                "suggestions": [],
-                "annotations": [],
-                "connectors": [],
-                "highlighted_text": ""
-            }
-        }
+        # 1) Intento directo
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError:
+            # 2) Rescate: extraer el bloque JSON más probable
+            parsed = json.loads(_extract_json_block(raw_output))
+
+        # 3) Rellenar faltantes sensatos
+        parsed = _fill_defaults(parsed, req.student_text)
+
+        # 4) Validar con Pydantic y normalizar tipos/rangos
+        try:
+            feedback = FeedbackOut.model_validate(parsed)
+        except ValidationError as ve:
+            # Ajuste mínimo: si 'score' invalida rango, normaliza y reintenta
+            if "score" in parsed:
+                try:
+                    parsed["score"] = max(0, min(100, int(parsed["score"])))
+                except Exception:
+                    parsed["score"] = 0
+            feedback = FeedbackOut.model_validate(parsed)
+
+        return feedback.model_dump()
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback final: siempre entrega el formato pedido
+        return FeedbackOut(
+            score=0,
+            errors=[],
+            suggestions=[],
+            statistics=_basic_stats_from_text(getattr(req, "student_text", "")),
+            competencies=Competencies(grammar=0, vocabulary=0, coherence=0, creativity=0),
+            annotations=[],
+        ).model_dump()
 
 # === Endpoint 2: Quiz con feedback inmediato ===
 @app.post("/quiz/generate")
