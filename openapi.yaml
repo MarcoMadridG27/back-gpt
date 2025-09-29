@@ -1,0 +1,242 @@
+openapi: 3.0.3
+info:
+  title: TutorAI IA Microservice
+  version: "1.0.0"
+  description: >
+    Microservicio de IA para análisis de textos, feedback estructurado, 
+    sugerencia de conectores, generación y evaluación de preguntas,
+    y comparación de versiones.
+
+servers:
+  - url: http://localhost:8000
+
+paths:
+
+  /feedback:
+    post:
+      summary: Análisis integral de texto con feedback estructurado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextRequest"
+      responses:
+        "200":
+          description: Feedback estructurado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackResponse"
+
+  /text/analyze:
+    post:
+      summary: Análisis detallado de un texto con métricas y anotaciones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextRequest"
+      responses:
+        "200":
+          description: Análisis de texto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeResponse"
+
+  /connectors/suggest:
+    post:
+      summary: Sugerencia de conectores en contexto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorRequest"
+      responses:
+        "200":
+          description: Conectores sugeridos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorResponse"
+
+  /questions/generate:
+    post:
+      summary: Generación de preguntas gamificadas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionRequest"
+      responses:
+        "200":
+          description: Pregunta generada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionResponse"
+
+  /answers/evaluate:
+    post:
+      summary: Evaluación de respuestas a preguntas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerRequest"
+      responses:
+        "200":
+          description: Resultado de la evaluación
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerResponse"
+
+  /text/compare:
+    post:
+      summary: Comparación de dos versiones de texto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompareRequest"
+      responses:
+        "200":
+          description: Resultados de la comparación
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareResponse"
+
+components:
+  schemas:
+
+    TextRequest:
+      type: object
+      properties:
+        student_text:
+          type: string
+          example: "Hoy fui al colegio estudié mucho después jugué con mis amigos"
+        text_type:
+          type: string
+          enum: [narrativo, argumentativo, expositivo, general]
+          example: narrativo
+        language:
+          type: string
+          example: es-PE
+
+    FeedbackResponse:
+      type: object
+      properties:
+        score:
+          type: object
+          properties:
+            global:
+              type: integer
+              example: 78
+            categories:
+              type: object
+              properties:
+                conectores: { type: integer, example: 20 }
+                gramática: { type: integer, example: 18 }
+                estructura: { type: integer, example: 15 }
+                vocabulario: { type: integer, example: 12 }
+                estilo: { type: integer, example: 13 }
+        conectors_detected:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, example: "temporal" }
+              word: { type: string, example: "después" }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, example: "gramática" }
+              message: { type: string, example: "Recuerda usar tildes en 'estudié'." }
+        suggestions:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, example: "estructura" }
+              message: { type: string, example: "Divide el texto en párrafos." }
+        highlighted_text:
+          type: string
+          example: "Hoy fui al colegio, **estudié** mucho y **después** jugué con mis amigos."
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        overall:
+          type: object
+          properties:
+            coherence: { type: number, format: float, example: 0.72 }
+            cohesion: { type: number, format: float, example: 0.68 }
+            connectors: { type: number, format: float, example: 0.61 }
+            adequacy: { type: number, format: float, example: 0.70 }
+        annotations:
+          type: array
+          items:
+            type: object
+            properties:
+              range:
+                type: object
+                properties:
+                  start: { type: integer, example: 120 }
+                  end: { type: integer, example: 150 }
+              severity: { type: string, example: "yellow" }
+              message: { type: string, example: "Conector repetido; use 'por consiguiente'." }
+        suggestions:
+          type: array
+          items:
+            type: string
+          example: ["Agrega un contraargumento", "Varía conectores de causa"]
+
+    ConnectorRequest:
+      type: object
+      properties:
+        snippet:
+          type: string
+          example: "Hoy fui al colegio..."
+        need:
+          type: string
+          example: "causa"
+
+    ConnectorResponse:
+      type: object
+      properties:
+        suggested:
+          type: array
+          items:
+            type: object
+            properties:
+              word: { type: string, example: "porque" }
+              type: { type: string, example: "causa" }
+              explanation: { type: string, example: "Introduce una causa directa." }
+
+    QuestionRequest:
+      type: object
+      properties:
+        student_level: { type: string, example: "2sec" }
+        topic: { type: string, example: "conectores-causa" }
+        question_type: { type: string, example: "multiple_choice" }
+        difficulty: { type: string, example: "medium" }
+        language: { type: string, example: "es-PE" }
+
+    QuestionResponse:
+      type: object
+      properties:
+        questionId: { type: string, example: "q-9f2a" }
+        statement: { type: string, example: "Selecciona el conector de causa más adecuado." }
+        options:
+          type: array
+          items: { type: string }
