@@ -173,24 +173,31 @@ def generate_feedback(req: TextRequest):
         "    {\n"
         '      "text": str,\n'
         '      "suggestion": str,\n'
-        '      "type": str,\n'
+        '      "type": "grammar|spelling|style|punctuation",\n'
         '      "severity": "high|medium|low",\n'
         '      "position": { "start": int, "end": int },\n'
         '      "explanation": str\n'
         "    }\n"
         "  ],\n"
-        '  "suggestions": [ { "text": str, "suggestion": str, "type": str } ],\n'
+        '  "suggestions": [ { "text": str, "suggestion": str, "type": "clarity|structure|vocabulary" } ],\n'
         '  "statistics": { "wordCount": int, "sentenceCount": int, "paragraphCount": int, "readabilityLevel": str },\n'
         '  "competencies": { "grammar": int, "vocabulary": int, "coherence": int, "creativity": int },\n'
         '  "annotations": [ { "start": int, "end": int, "type": "highlight", "message": str } ]\n'
         "}\n\n"
         "Instrucciones adicionales:\n"
+        "- Clasifica los errores en uno de estos tipos: "
+        "  • 'grammar' (errores gramaticales), "
+        "  • 'spelling' (errores ortográficos, incluidos tildes y acentos en español), "
+        "  • 'style' (estilo o redacción), "
+        "  • 'punctuation' (signos de puntuación).\n"
+        "- Siempre detecta y corrige palabras mal escritas o sin tildes (ej: 'accion' → 'acción').\n"
         "- Calcula siempre las posiciones (start, end) como índices basados en caracteres en el texto del estudiante.\n"
         "- 'start' es el índice de la primera letra de la palabra/frase con error.\n"
         "- 'end' es EXCLUSIVO: apunta justo después del último carácter de la palabra/frase.\n"
         "- Si no encuentras el término, usa {\"start\": 0, \"end\": 0}.\n"
         "- No devuelvas explicaciones ni notas fuera del JSON."
     )
+
 
     try:
         response = client.chat.completions.create(
