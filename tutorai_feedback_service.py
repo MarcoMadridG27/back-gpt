@@ -166,53 +166,30 @@ def generate_feedback(req: TextRequest):
     SYSTEM_PROMPT = (
         "Eres un tutor de comunicación para secundaria. "
         "Analiza el texto del estudiante y responde ÚNICAMENTE con JSON VÁLIDO, sin comentarios ni texto adicional. "
-        "Debes usar exactamente este esquema (las claves y tipos deben coincidir):\n"
+        "Debes usar exactamente este esquema:\n"
         "{\n"
-        '  "score": 0,\n'
+        '  "score": int,\n'
         '  "errors": [\n'
         "    {\n"
-        '      "text": "",\n'
-        '      "suggestion": "",\n'
-        '      "type": "spelling",\n'
-        '      "severity": "medium",\n'
-        '      "position": { "start": 0, "end": 0 },\n'
-        '      "explanation": ""\n'
+        '      "text": str,\n'
+        '      "suggestion": str,\n'
+        '      "type": str,\n'
+        '      "severity": "high|medium|low",\n'
+        '      "position": { "start": int, "end": int },\n'
+        '      "explanation": str\n'
         "    }\n"
         "  ],\n"
-        '  "suggestions": [\n'
-        "    {\n"
-        '      "text": "",\n'
-        '      "suggestion": "",\n'
-        '      "type": "Style"\n'
-        "    }\n"
-        "  ],\n"
-        '  "statistics": {\n'
-        '    "wordCount": 0,\n'
-        '    "sentenceCount": 0,\n'
-        '    "paragraphCount": 0,\n'
-        '    "readabilityLevel": "Secundaria"\n'
-        "  },\n"
-        '  "competencies": {\n'
-        '    "grammar": 0,\n'
-        '    "vocabulary": 0,\n'
-        '    "coherence": 0,\n'
-        '    "creativity": 0\n'
-        "  },\n"
-        '  "annotations": [\n'
-        "    {\n"
-        '      "start": 0,\n'
-        '      "end": 0,\n'
-        '      "type": "highlight",\n'
-        '      "message": ""\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "Restricciones:\n"
-        "- Usa enteros 0–100 para 'score' y para cada competencia.\n"
-        "- 'type' y 'severity' deben ser cadenas válidas, con 'severity' ∈ {high, medium, low}.\n"
-        "- 'annotations.type' SIEMPRE debe ser 'highlight'.\n"
-        "- Si no tienes posición exacta, deja start y end en 0.\n"
-        "- NO incluyas comentarios, notas, ni texto fuera del JSON."
+        '  "suggestions": [ { "text": str, "suggestion": str, "type": str } ],\n'
+        '  "statistics": { "wordCount": int, "sentenceCount": int, "paragraphCount": int, "readabilityLevel": str },\n'
+        '  "competencies": { "grammar": int, "vocabulary": int, "coherence": int, "creativity": int },\n'
+        '  "annotations": [ { "start": int, "end": int, "type": "highlight", "message": str } ]\n'
+        "}\n\n"
+        "Instrucciones adicionales:\n"
+        "- Calcula siempre las posiciones (start, end) como índices basados en caracteres en el texto del estudiante.\n"
+        "- 'start' es el índice de la primera letra de la palabra/frase con error.\n"
+        "- 'end' es EXCLUSIVO: apunta justo después del último carácter de la palabra/frase.\n"
+        "- Si no encuentras el término, usa {\"start\": 0, \"end\": 0}.\n"
+        "- No devuelvas explicaciones ni notas fuera del JSON."
     )
 
     try:
